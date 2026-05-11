@@ -1,0 +1,28 @@
+# Python
+edudown/backend/venv/
+edudown/backend/__pycache__/
+edudown/backend/*.db
+edudown/backend/*.pyc
+__pycache__/
+*.pyc
+*.pyo
+
+# Node
+edudown/frontend/node_modules/
+edudown/frontend/dist/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+
+# Skills
+skills-lock.json
