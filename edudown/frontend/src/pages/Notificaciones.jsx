@@ -51,12 +51,18 @@ export default function Notificaciones({ user }) {
           <p className="text-sm text-gray-400 mt-0.5">Publish-Subscribe · Dead Letter Channel</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <span className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full font-medium ${
-            wsConnected ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
-          }`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${wsConnected ? 'bg-emerald-500 pulse-badge' : 'bg-red-500'}`} />
-            {wsConnected ? 'En vivo' : 'Sin conexión'}
-          </span>
+          {import.meta.env.VITE_DEMO_MODE === 'true' ? (
+            <span className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full font-medium bg-gray-100 text-gray-500">
+              Modo demo
+            </span>
+          ) : (
+            <span className={`flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-full font-medium ${
+              wsConnected ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${wsConnected ? 'bg-emerald-500 pulse-badge' : 'bg-red-500'}`} />
+              {wsConnected ? 'En vivo' : 'Sin conexión'}
+            </span>
+          )}
           {notificaciones.length > 0 && (
             <button onClick={marcarTodasLeidas} className="btn-secondary text-xs py-1.5 px-3">
               Marcar todas leídas
