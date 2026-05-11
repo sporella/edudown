@@ -35,7 +35,9 @@ export default function App() {
           <Route path="/" element={
             user.rol === 'admin_institucion'
               ? <Navigate to="/dashboard" replace />
-              : <Navigate to="/mapa" replace />
+              : user.rol === 'auxiliar_limpieza' || user.rol === 'jefe_auxiliares'
+              ? <Navigate to="/mapa" replace />
+              : <Navigate to="/pacientes" replace />
           } />
           <Route path="/mapa" element={<BoxMap user={user} />} />
           <Route path="/sesiones" element={<Sesiones user={user} />} />

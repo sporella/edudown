@@ -48,9 +48,9 @@ const IconMenu = () => (
 )
 
 const NAV_ITEMS = [
+  { path: '/pacientes', label: 'Pacientes', icon: <IconUsers />, roles: ['enfermera', 'medico_kinesiologo', 'medico_fonoaudiologo', 'admin_sede', 'admin_institucion'] },
   { path: '/dashboard', label: 'Dashboard', icon: <IconChart />, roles: ['admin_institucion'] },
   { path: '/mapa', label: 'Mapa de Boxes', icon: <IconMap />, roles: ['enfermera', 'medico_kinesiologo', 'medico_fonoaudiologo', 'admin_sede', 'auxiliar_limpieza', 'jefe_auxiliares', 'admin_institucion'] },
-  { path: '/pacientes', label: 'Pacientes', icon: <IconUsers />, roles: ['enfermera', 'medico_kinesiologo', 'medico_fonoaudiologo', 'admin_sede', 'admin_institucion'] },
   { path: '/sesiones', label: 'Sesiones', icon: <IconCalendar />, roles: ['enfermera', 'medico_kinesiologo', 'medico_fonoaudiologo', 'admin_sede'] },
   { path: '/notificaciones', label: 'Notificaciones', icon: <IconBell />, roles: ['auxiliar_limpieza', 'jefe_auxiliares', 'enfermera', 'admin_sede'] },
 ]

@@ -272,41 +272,44 @@ async def agendar_sesion(req: AgendarSesionRequest, session: Session = Depends(g
     if not box:
         raise HTTPException(status_code=404, detail="Box no encontrado")
 
-    # Atomic validation (RN-10): check box availability
-    conflicto_box = session.exec(
-        select(Sesion).where(
-            Sesion.box_id == req.box_id,
-            Sesion.fecha == fecha,
-            Sesion.estado.in_([SessionStatus.planificada, SessionStatus.en_curso]),
-            Sesion.hora_inicio == req.hora_inicio,
-        )
-    ).first()
-    if conflicto_box:
-        raise HTTPException(status_code=409, detail="El box ya tiene una sesión en ese horario")
+    desplazamiento_info = None
 
-    # Check professional availability (RN-06)
-    conflicto_prof = session.exec(
-        select(Sesion).where(
-            Sesion.profesional_id == req.profesional_id,
-            Sesion.fecha == fecha,
-            Sesion.estado.in_([SessionStatus.planificada, SessionStatus.en_curso]),
+    if req.es_urgencia:
+        # Urgency preempts planificada sessions — cannot displace en_curso
+        conflicto_box = session.exec(
+            select(Sesion).where(
+                Sesion.box_id == req.box_id,
+                Sesion.fecha == fecha,
+                Sesion.hora_inicio == req.hora_inicio,
+                Sesion.estado.in_([SessionStatus.planificada, SessionStatus.en_curso]),
+            )
+        ).first()
+        if conflicto_box:
+            if conflicto_box.estado == SessionStatus.en_curso:
+                raise HTTPException(status_code=409, detail="Hay una sesión en curso en este box, no se puede desplazar")
+            desplazamiento_info = _desplazar_sesion(conflicto_box, fecha, box.tipo, box.sede_id, session)
+    else:
+        # Normal atomic validation (RN-10)
+        if session.exec(select(Sesion).where(
+            Sesion.box_id == req.box_id, Sesion.fecha == fecha,
             Sesion.hora_inicio == req.hora_inicio,
-        )
-    ).first()
-    if conflicto_prof:
-        raise HTTPException(status_code=409, detail="El profesional ya tiene una sesión en ese horario")
+            Sesion.estado.in_([SessionStatus.planificada, SessionStatus.en_curso]),
+        )).first():
+            raise HTTPException(status_code=409, detail="El box ya tiene una sesión en ese horario")
 
-    # Check patient availability (RN-10): a patient cannot have two sessions at the same time
-    conflicto_paciente = session.exec(
-        select(Sesion).where(
-            Sesion.paciente_id == req.paciente_id,
-            Sesion.fecha == fecha,
-            Sesion.estado.in_([SessionStatus.planificada, SessionStatus.en_curso]),
+        if session.exec(select(Sesion).where(
+            Sesion.profesional_id == req.profesional_id, Sesion.fecha == fecha,
             Sesion.hora_inicio == req.hora_inicio,
-        )
-    ).first()
-    if conflicto_paciente:
-        raise HTTPException(status_code=409, detail="El paciente ya tiene una sesión en ese horario")
+            Sesion.estado.in_([SessionStatus.planificada, SessionStatus.en_curso]),
+        )).first():
+            raise HTTPException(status_code=409, detail="El profesional ya tiene una sesión en ese horario")
+
+        if session.exec(select(Sesion).where(
+            Sesion.paciente_id == req.paciente_id, Sesion.fecha == fecha,
+            Sesion.hora_inicio == req.hora_inicio,
+            Sesion.estado.in_([SessionStatus.planificada, SessionStatus.en_curso]),
+        )).first():
+            raise HTTPException(status_code=409, detail="El paciente ya tiene una sesión en ese horario")
 
     # Type compatibility (RN-05)
     prof = session.get(Profesional, req.profesional_id)
@@ -351,7 +354,15 @@ async def agendar_sesion(req: AgendarSesionRequest, session: Session = Depends(g
     await sio.emit("box_update", event_data, room=f"sede_{box.sede_id}")
     await sio.emit("session_scheduled", event_data)
 
-    return {"id": sesion.id, "mensaje": "Sesión agendada correctamente", **event_data}
+    mensaje = "Sesión agendada correctamente"
+    if desplazamiento_info:
+        d = desplazamiento_info
+        if d["suspendida"]:
+            mensaje = f"Urgencia agendada. Sesión de {d['paciente']} a las {d['hora_original']} fue suspendida por falta de disponibilidad"
+        else:
+            mensaje = f"Urgencia agendada. Sesión de {d['paciente']} reagendada a las {d['nueva_hora']} (Box {d['nuevo_box']})"
+
+    return {"id": sesion.id, "mensaje": mensaje, "desplazamiento": desplazamiento_info, **event_data}
 
 
 @app.get("/api/sesiones/hoy")
@@ -459,9 +470,13 @@ async def cerrar_sesion(
 # ---- AI Suggestion (Heuristic Engine — patient-aware) ----
 
 HORARIOS_SUGERENCIA = ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00"]
+HORARIOS_FIN = {
+    "09:00": "10:00", "10:00": "11:00", "11:00": "12:00",
+    "14:00": "15:00", "15:00": "16:00", "16:00": "17:00",
+}
 
 
-def _build_sugerencia(box, prof, tipo: str, razones: list, confianza: int, hora_sugerida: str = "09:00") -> dict:
+def _build_sugerencia(box, prof, tipo: str, razones: list, confianza: int, hora_sugerida: str = "09:00", desplazamiento=None) -> dict:
     return {
         "box": {"id": box.id, "numero": box.numero, "tipo": box.tipo},
         "profesional": {"id": prof.id, "nombre": prof.nombre, "especialidad": prof.especialidad},
@@ -469,7 +484,61 @@ def _build_sugerencia(box, prof, tipo: str, razones: list, confianza: int, hora_
         "razones": razones,
         "tipo": tipo,
         "hora_sugerida": hora_sugerida,
+        "desplazamiento": desplazamiento,
     }
+
+
+def _desplazar_sesion(sesion_desplazada, fecha, tipo_box, sede_id, db_session):
+    """Move a planificada session to the next free slot. Returns displacement info dict."""
+    pac = db_session.get(Paciente, sesion_desplazada.paciente_id)
+    all_hoy = db_session.exec(select(Sesion).where(Sesion.fecha == fecha)).all()
+
+    box_busy = {}
+    for s in all_hoy:
+        if s.id != sesion_desplazada.id and s.estado in [SessionStatus.planificada, SessionStatus.en_curso]:
+            box_busy.setdefault(s.box_id, set()).add(s.hora_inicio)
+
+    pac_busy = {s.hora_inicio for s in all_hoy
+                if s.paciente_id == sesion_desplazada.paciente_id
+                and s.id != sesion_desplazada.id
+                and s.estado in [SessionStatus.planificada, SessionStatus.en_curso]}
+
+    all_boxes = db_session.exec(select(Box).where(Box.sede_id == sede_id, Box.tipo == tipo_box)).all()
+    hora_original = sesion_desplazada.hora_inicio
+
+    nueva_hora = nueva_box = None
+    for h in HORARIOS_SUGERENCIA:
+        if h == hora_original or h in pac_busy:
+            continue
+        for b in all_boxes:
+            if h not in box_busy.get(b.id, set()):
+                nueva_hora, nueva_box = h, b
+                break
+        if nueva_hora:
+            break
+
+    if nueva_hora and nueva_box:
+        sesion_desplazada.box_id = nueva_box.id
+        sesion_desplazada.hora_inicio = nueva_hora
+        sesion_desplazada.hora_fin = HORARIOS_FIN.get(nueva_hora, nueva_hora)
+        return {
+            "sesion_id": sesion_desplazada.id,
+            "paciente": pac.nombre if pac else "",
+            "hora_original": hora_original,
+            "nueva_hora": nueva_hora,
+            "nuevo_box": nueva_box.numero,
+            "suspendida": False,
+        }
+    else:
+        sesion_desplazada.estado = SessionStatus.suspendida
+        return {
+            "sesion_id": sesion_desplazada.id,
+            "paciente": pac.nombre if pac else "",
+            "hora_original": hora_original,
+            "nueva_hora": None,
+            "nuevo_box": None,
+            "suspendida": True,
+        }
 
 
 @app.get("/api/sugerencia")
@@ -531,26 +600,70 @@ def get_sugerencia(
     sugerencias = []
 
     def find_slot(box_list):
-        """Return (box, hora) — first slot where box is free AND patient is free."""
+        """Return (box, hora, desplazamiento) — free slot first; urgency may preempt planificada."""
         for box in box_list:
             busy = box_busy_hours.get(box.id, set())
             for hora in HORARIOS_SUGERENCIA:
                 if hora not in busy and hora not in patient_busy_hours:
-                    return box, hora
-        return None, None
+                    return box, hora, None
+
+        if not es_urgencia:
+            return None, None, None
+
+        # Urgency: look for a planificada session we can preempt (not en_curso)
+        for box in box_list:
+            for hora in HORARIOS_SUGERENCIA:
+                if hora in patient_busy_hours:
+                    continue
+                sesion_aqui = next(
+                    (s for s in sesiones_hoy
+                     if s.box_id == box.id and s.hora_inicio == hora
+                     and s.estado == SessionStatus.planificada),
+                    None
+                )
+                if not sesion_aqui:
+                    continue
+                pac_d = session.get(Paciente, sesion_aqui.paciente_id)
+                displaced_busy = {s.hora_inicio for s in sesiones_hoy
+                                   if s.paciente_id == sesion_aqui.paciente_id
+                                   and s.id != sesion_aqui.id
+                                   and s.estado in [SessionStatus.planificada, SessionStatus.en_curso]}
+                nueva_hora = nueva_box_num = None
+                for h in HORARIOS_SUGERENCIA:
+                    if h == hora or h in displaced_busy:
+                        continue
+                    for b in box_list:
+                        if h not in box_busy_hours.get(b.id, set()):
+                            nueva_hora, nueva_box_num = h, b.numero
+                            break
+                    if nueva_hora:
+                        break
+                desplazamiento = {
+                    "sesion_id": sesion_aqui.id,
+                    "paciente": pac_d.nombre if pac_d else "paciente",
+                    "hora_original": hora,
+                    "nueva_hora": nueva_hora,
+                    "nuevo_box": nueva_box_num,
+                    "suspendida": nueva_hora is None,
+                }
+                return box, hora, desplazamiento
+
+        return None, None, None
 
     # --- Heuristic rules (RN-05, RN-06, RN-19) ---
 
     def make_kine_sug():
         if not kine_profs:
             return None
-        box, hora = find_slot(kine_boxes)
+        box, hora, desplazamiento = find_slot(kine_boxes)
         if not box:
             return None
-        is_reagenda = box.estado != BoxStatus.disponible
+        is_reagenda = box.estado != BoxStatus.disponible and not desplazamiento
         disp_count = sum(1 for b in kine_boxes if b.estado == BoxStatus.disponible)
         razones = ["box-tipo-match", "prof-disponible"]
-        if is_reagenda:
+        if desplazamiento:
+            razones.append(f"urgencia-desplaza:{desplazamiento['paciente'].split()[0]}-a-{desplazamiento['nueva_hora'] or 'suspendida'}")
+        elif is_reagenda:
             razones.append(f"reagendamiento:box-{box.numero}-libre-a-{hora}")
         else:
             razones.append(f"boxes-kine-disp:{disp_count}")
@@ -607,18 +720,20 @@ def get_sugerencia(
         else:
             chosen_prof = kine_profs[0]
 
-        return _build_sugerencia(box, chosen_prof, "kinesiologia", razones, confianza, hora)
+        return _build_sugerencia(box, chosen_prof, "kinesiologia", razones, confianza, hora, desplazamiento)
 
     def make_fono_sug():
         if not fono_profs:
             return None
-        box, hora = find_slot(fono_boxes)
+        box, hora, desplazamiento = find_slot(fono_boxes)
         if not box:
             return None
-        is_reagenda = box.estado != BoxStatus.disponible
+        is_reagenda = box.estado != BoxStatus.disponible and not desplazamiento
         disp_count = sum(1 for b in fono_boxes if b.estado == BoxStatus.disponible)
         razones = ["box-tipo-match", "prof-disponible"]
-        if is_reagenda:
+        if desplazamiento:
+            razones.append(f"urgencia-desplaza:{desplazamiento['paciente'].split()[0]}-a-{desplazamiento['nueva_hora'] or 'suspendida'}")
+        elif is_reagenda:
             razones.append(f"reagendamiento:box-{box.numero}-libre-a-{hora}")
         else:
             razones.append(f"boxes-fono-disp:{disp_count}")
@@ -672,7 +787,7 @@ def get_sugerencia(
         else:
             chosen_prof = fono_profs[0]
 
-        return _build_sugerencia(box, chosen_prof, "fonoaudiologia", razones, confianza, hora)
+        return _build_sugerencia(box, chosen_prof, "fonoaudiologia", razones, confianza, hora, desplazamiento)
 
     # Decide what to suggest based on patient needs
     if paciente:

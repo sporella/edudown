@@ -129,6 +129,7 @@ const HORARIOS_FIN = {
   '12:00': '13:00', '14:00': '15:00', '15:00': '16:00', '16:00': '17:00', '17:00': '18:00',
 }
 
+
 // ─── Mutable in-memory state ─────────────────────────────────────────────────
 
 function makeSessions(dateStr) {
@@ -262,26 +263,75 @@ function handleMock(config) {
     const pac = PACIENTES.find(p => p.id === body.paciente_id)
     if (!box || !prof || !pac) return err('Datos inválidos')
 
-    const conflictoBox = state.sessions.find(s =>
-      s.box_id === body.box_id && s.fecha === body.fecha &&
-      s.hora_inicio === body.hora_inicio &&
-      (s.estado === 'planificada' || s.estado === 'en_curso')
-    )
-    if (conflictoBox) return err('El box ya tiene una sesión en ese horario', 409)
+    let desplazamientoInfo = null
 
-    const conflictoProf = state.sessions.find(s =>
-      s.profesional_id === body.profesional_id && s.fecha === body.fecha &&
-      s.hora_inicio === body.hora_inicio &&
-      (s.estado === 'planificada' || s.estado === 'en_curso')
-    )
-    if (conflictoProf) return err('El profesional ya tiene una sesión en ese horario', 409)
+    if (body.es_urgencia) {
+      // Urgency: preempt planificada sessions, fail on en_curso
+      const conflictoBox = state.sessions.find(s =>
+        s.box_id === body.box_id && s.fecha === body.fecha &&
+        s.hora_inicio === body.hora_inicio &&
+        (s.estado === 'planificada' || s.estado === 'en_curso')
+      )
+      if (conflictoBox) {
+        if (conflictoBox.estado === 'en_curso') return err('Hay una sesión en curso en este box, no se puede desplazar', 409)
 
-    const conflictoPaciente = state.sessions.find(s =>
-      s.paciente_id === body.paciente_id && s.fecha === body.fecha &&
-      s.hora_inicio === body.hora_inicio &&
-      (s.estado === 'planificada' || s.estado === 'en_curso')
-    )
-    if (conflictoPaciente) return err('El paciente ya tiene una sesión en ese horario', 409)
+        // Find a new slot for the displaced session
+        const box_tipo = box.tipo
+        const allBoxesTipo = state.boxes.filter(b => b.sede_id === box.sede_id && b.tipo === box_tipo)
+        const allHoy = state.sessions.filter(s => s.fecha === body.fecha)
+        const boxBusy = {}
+        allHoy.forEach(s => {
+          if (s.id !== conflictoBox.id && (s.estado === 'planificada' || s.estado === 'en_curso')) {
+            if (!boxBusy[s.box_id]) boxBusy[s.box_id] = new Set()
+            boxBusy[s.box_id].add(s.hora_inicio)
+          }
+        })
+        const pacBusy = new Set(
+          allHoy.filter(s => s.paciente_id === conflictoBox.paciente_id && s.id !== conflictoBox.id &&
+            (s.estado === 'planificada' || s.estado === 'en_curso')).map(s => s.hora_inicio)
+        )
+        const horaOriginal = conflictoBox.hora_inicio
+        let nuevaHora = null, nuevoBox = null
+        for (const h of HORARIOS) {
+          if (h === horaOriginal || pacBusy.has(h)) continue
+          for (const b of allBoxesTipo) {
+            if (!(boxBusy[b.id] || new Set()).has(h)) { nuevaHora = h; nuevoBox = b; break }
+          }
+          if (nuevaHora) break
+        }
+        const pacD = PACIENTES.find(p => p.id === conflictoBox.paciente_id)
+        if (nuevaHora && nuevoBox) {
+          conflictoBox.box_id = nuevoBox.id
+          conflictoBox.hora_inicio = nuevaHora
+          conflictoBox.hora_fin = HORARIOS_FIN[nuevaHora] || nuevaHora
+          desplazamientoInfo = { paciente: pacD?.nombre || '', hora_original: horaOriginal, nueva_hora: nuevaHora, nuevo_box: nuevoBox.numero, suspendida: false }
+        } else {
+          conflictoBox.estado = 'suspendida'
+          desplazamientoInfo = { paciente: pacD?.nombre || '', hora_original: horaOriginal, nueva_hora: null, nuevo_box: null, suspendida: true }
+        }
+      }
+    } else {
+      const conflictoBox = state.sessions.find(s =>
+        s.box_id === body.box_id && s.fecha === body.fecha &&
+        s.hora_inicio === body.hora_inicio &&
+        (s.estado === 'planificada' || s.estado === 'en_curso')
+      )
+      if (conflictoBox) return err('El box ya tiene una sesión en ese horario', 409)
+
+      const conflictoProf = state.sessions.find(s =>
+        s.profesional_id === body.profesional_id && s.fecha === body.fecha &&
+        s.hora_inicio === body.hora_inicio &&
+        (s.estado === 'planificada' || s.estado === 'en_curso')
+      )
+      if (conflictoProf) return err('El profesional ya tiene una sesión en ese horario', 409)
+
+      const conflictoPaciente = state.sessions.find(s =>
+        s.paciente_id === body.paciente_id && s.fecha === body.fecha &&
+        s.hora_inicio === body.hora_inicio &&
+        (s.estado === 'planificada' || s.estado === 'en_curso')
+      )
+      if (conflictoPaciente) return err('El paciente ya tiene una sesión en ese horario', 409)
+    }
     const sede = SEDES.find(s => s.id === box.sede_id)
     const s = {
       id: state.nextId++,
@@ -298,7 +348,14 @@ function handleMock(config) {
       const b = state.boxes.find(b => b.id === box.id)
       if (b) b.estado = 'ocupado'
     }
-    return ok(s)
+    let mensaje = 'Sesión agendada correctamente'
+    if (desplazamientoInfo) {
+      const d = desplazamientoInfo
+      mensaje = d.suspendida
+        ? `Urgencia agendada. Sesión de ${d.paciente} a las ${d.hora_original} fue suspendida por falta de disponibilidad`
+        : `Urgencia agendada. Sesión de ${d.paciente} reagendada a las ${d.nueva_hora} (Box ${d.nuevo_box})`
+    }
+    return ok({ ...s, mensaje, desplazamiento: desplazamientoInfo })
   }
 
   // POST /api/sesiones/:id/cerrar
@@ -349,12 +406,53 @@ function handleMock(config) {
       (a.estado === 'disponible' ? 0 : 1) - (b.estado === 'disponible' ? 0 : 1)
     )
 
-    // Find the first (box, hora) combo where both box and patient are free
+    const isUrgencia = params.es_urgencia === 'true'
+
+    // Find the first (box, hora) combo — free slot first, then preempt planificada for urgency
     const findSlot = (boxList) => {
       for (const box of sortBoxes(boxList)) {
         const busy = boxBusyHours[box.id] || new Set()
         for (const hora of HORARIOS) {
-          if (!busy.has(hora) && !pacienteBusyHours.has(hora)) return { box, hora }
+          if (!busy.has(hora) && !pacienteBusyHours.has(hora)) return { box, hora, desplazamiento: null }
+        }
+      }
+      if (!isUrgencia) return null
+
+      // Urgency: try to preempt a planificada session
+      for (const box of sortBoxes(boxList)) {
+        for (const hora of HORARIOS) {
+          if (pacienteBusyHours.has(hora)) continue
+          const sesionAqui = state.sessions.find(s =>
+            s.box_id === box.id && s.hora_inicio === hora &&
+            s.fecha === TODAY && s.estado === 'planificada'
+          )
+          if (!sesionAqui) continue
+          const pacD = PACIENTES.find(p => p.id === sesionAqui.paciente_id)
+          const displacedBusy = new Set(
+            state.sessions
+              .filter(s => s.paciente_id === sesionAqui.paciente_id && s.fecha === TODAY &&
+                s.id !== sesionAqui.id && (s.estado === 'planificada' || s.estado === 'en_curso'))
+              .map(s => s.hora_inicio)
+          )
+          let nuevaHora = null, nuevaBox = null
+          for (const h of HORARIOS) {
+            if (h === hora || displacedBusy.has(h)) continue
+            for (const b of sortBoxes(boxList)) {
+              if (!(boxBusyHours[b.id] || new Set()).has(h)) { nuevaHora = h; nuevaBox = b; break }
+            }
+            if (nuevaHora) break
+          }
+          return {
+            box, hora,
+            desplazamiento: {
+              sesion_id: sesionAqui.id,
+              paciente: pacD?.nombre || 'paciente',
+              hora_original: hora,
+              nueva_hora: nuevaHora,
+              nuevo_box: nuevaBox?.numero || null,
+              suspendida: !nuevaHora,
+            },
+          }
         }
       }
       return null
@@ -367,33 +465,35 @@ function handleMock(config) {
     const kSlot = findSlot(kineBoxes)
     const kProf = profs.find(p => p.especialidad === 'kinesiologia')
     if (kSlot && kProf && (!pac || pac.necesita_kine)) {
-      const isReagenda = kSlot.box.estado !== 'disponible'
+      const isReagenda = kSlot.box.estado !== 'disponible' && !kSlot.desplazamiento
       const razones = [
         pac?.necesita_kine ? 'Kinesiología requerida por el paciente' : 'Box kinesiología disponible',
         pac?.profesional_preferido_kine?.id === kProf.id ? 'Profesional habitual del paciente' : 'Profesional disponible',
       ]
-      if (isReagenda) razones.push(`reagendamiento:box-${kSlot.box.numero}-libre-a-${kSlot.hora}`)
+      if (kSlot.desplazamiento) razones.push(`urgencia-desplaza:${kSlot.desplazamiento.paciente.split(' ')[0]}-a-${kSlot.desplazamiento.nueva_hora || 'suspendida'}`)
+      else if (isReagenda) razones.push(`reagendamiento:box-${kSlot.box.numero}-libre-a-${kSlot.hora}`)
       else razones.push('Horario óptimo de la jornada')
       sugerencias.push({
         tipo: 'kinesiologia', box: kSlot.box, profesional: kProf, hora_sugerida: kSlot.hora,
         confianza: (pac?.necesita_kine ? 90 : 72) - (isReagenda ? 5 : 0),
-        razones,
+        razones, desplazamiento: kSlot.desplazamiento,
       })
     }
 
     const fSlot = findSlot(fonoBoxes)
     const fProf = profs.find(p => p.especialidad === 'fonoaudiologia')
     if (fSlot && fProf && (!pac || pac.necesita_fono)) {
-      const isReagenda = fSlot.box.estado !== 'disponible'
+      const isReagenda = fSlot.box.estado !== 'disponible' && !fSlot.desplazamiento
       const razones = [
         pac?.necesita_fono ? 'Fonoaudiología requerida por el paciente' : 'Box fonoaudiología disponible',
         'Profesional disponible en la sede',
       ]
-      if (isReagenda) razones.push(`reagendamiento:box-${fSlot.box.numero}-libre-a-${fSlot.hora}`)
+      if (fSlot.desplazamiento) razones.push(`urgencia-desplaza:${fSlot.desplazamiento.paciente.split(' ')[0]}-a-${fSlot.desplazamiento.nueva_hora || 'suspendida'}`)
+      else if (isReagenda) razones.push(`reagendamiento:box-${fSlot.box.numero}-libre-a-${fSlot.hora}`)
       sugerencias.push({
         tipo: 'fonoaudiologia', box: fSlot.box, profesional: fProf, hora_sugerida: fSlot.hora,
         confianza: (pac?.necesita_fono ? 88 : 65) - (isReagenda ? 5 : 0),
-        razones,
+        razones, desplazamiento: fSlot.desplazamiento,
       })
     }
 

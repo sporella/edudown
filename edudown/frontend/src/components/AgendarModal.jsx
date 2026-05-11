@@ -33,6 +33,7 @@ export default function AgendarModal({ box, sedeId, onClose, onSuccess, isUrgenc
   const [error, setError] = useState('')
   const [usingSugerencia, setUsingSugerencia] = useState(false)
   const [appliedSugBox, setAppliedSugBox] = useState(null)
+  const [appliedDesplazamiento, setAppliedDesplazamiento] = useState(null)
 
   const activePaciente = pacienteProp || pacientes.find(p => String(p.id) === form.paciente_id) || null
 
@@ -72,6 +73,7 @@ export default function AgendarModal({ box, sedeId, onClose, onSuccess, isUrgenc
       ...(sug.hora_sugerida ? { hora_inicio: sug.hora_sugerida } : {}),
     }))
     setAppliedSugBox(sug.box)
+    setAppliedDesplazamiento(sug.desplazamiento || null)
     setUsingSugerencia(true)
   }
 
@@ -93,7 +95,7 @@ export default function AgendarModal({ box, sedeId, onClose, onSuccess, isUrgenc
     try {
       const boxId = box?.id || appliedSugBox?.id || sugerencia?.sugerencias?.[0]?.box?.id
       if (!boxId) { setError('No hay box disponible. Selecciona desde el mapa o espera disponibilidad.'); setLoading(false); return }
-      await axios.post('/api/sesiones', {
+      const res = await axios.post('/api/sesiones', {
         box_id: boxId,
         profesional_id: parseInt(form.profesional_id),
         paciente_id: parseInt(form.paciente_id),
@@ -103,7 +105,7 @@ export default function AgendarModal({ box, sedeId, onClose, onSuccess, isUrgenc
         es_urgencia: form.es_urgencia,
         notas: form.notas || null,
       })
-      onSuccess()
+      onSuccess(res.data)
     } catch (err) {
       setError(err.response?.data?.detail || 'Error al agendar la sesión')
     } finally {
@@ -203,16 +205,28 @@ export default function AgendarModal({ box, sedeId, onClose, onSuccess, isUrgenc
                     {s.razones.map((r, j) => (
                       <span key={j} className={`text-[11px] px-1.5 py-0.5 rounded-full ${
                         r.startsWith('⚠️') ? 'bg-red-50 text-red-600'
+                        : r.includes('urgencia-desplaza') ? 'bg-amber-50 text-amber-700'
                         : r.includes('habitual') || r.includes('requerido') ? 'bg-blue-50 text-blue-600'
                         : 'bg-gray-100 text-gray-500'
                       }`}>{r}</span>
                     ))}
                   </div>
+                  {s.desplazamiento && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2 mb-2.5 text-xs text-amber-800">
+                      <strong>Desplazamiento:</strong> Sesión de <strong>{s.desplazamiento.paciente}</strong> a las {s.desplazamiento.hora_original}{' '}
+                      {s.desplazamiento.nueva_hora
+                        ? <>será reagendada a las <strong>{s.desplazamiento.nueva_hora}</strong> (Box {s.desplazamiento.nuevo_box})</>
+                        : <span className="text-red-700 font-medium">será suspendida — sin disponibilidad alternativa</span>
+                      }
+                    </div>
+                  )}
                   <button
                     onClick={() => applySugerencia(s)}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white text-xs py-1.5 rounded-lg font-medium transition-colors"
+                    className={`w-full text-white text-xs py-1.5 rounded-lg font-medium transition-colors ${
+                      s.desplazamiento ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'
+                    }`}
                   >
-                    Usar esta sugerencia
+                    {s.desplazamiento ? 'Confirmar urgencia con desplazamiento' : 'Usar esta sugerencia'}
                   </button>
                 </div>
               ))}
@@ -223,11 +237,26 @@ export default function AgendarModal({ box, sedeId, onClose, onSuccess, isUrgenc
           )}
 
           {usingSugerencia && (
-            <div className="bg-emerald-50 border border-emerald-100 rounded-lg px-3.5 py-2.5 text-sm text-emerald-700 flex items-center gap-2">
-              <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className={`border rounded-lg px-3.5 py-2.5 text-sm flex items-start gap-2 ${
+              appliedDesplazamiento
+                ? 'bg-amber-50 border-amber-200 text-amber-800'
+                : 'bg-emerald-50 border-emerald-100 text-emerald-700'
+            }`}>
+              <svg className="w-4 h-4 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              Sugerencia aplicada — {appliedSugBox ? `Box ${appliedSugBox.numero}` : ''}{form.hora_inicio ? ` · ${form.hora_inicio}` : ''} · puedes modificar si lo necesitas
+              <span>
+                Sugerencia aplicada — {appliedSugBox ? `Box ${appliedSugBox.numero}` : ''}{form.hora_inicio ? ` · ${form.hora_inicio}` : ''}
+                {appliedDesplazamiento && (
+                  <span className="block text-xs mt-0.5">
+                    Sesión de <strong>{appliedDesplazamiento.paciente}</strong> a las {appliedDesplazamiento.hora_original}{' '}
+                    {appliedDesplazamiento.nueva_hora
+                      ? <>será reagendada a las <strong>{appliedDesplazamiento.nueva_hora}</strong></>
+                      : <span className="text-red-700 font-medium">será suspendida (sin disponibilidad)</span>
+                    }
+                  </span>
+                )}
+              </span>
             </div>
           )}
 
