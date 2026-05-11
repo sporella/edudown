@@ -17,7 +17,7 @@ El proyecto fue desarrollado como caso de estudio para aplicar **Enterprise Inte
 
 La aplicación está disponible en modo demostración (sin backend, con datos de ejemplo):
 
-👉 **[Ver demo en GitHub Pages]([https://tu-usuario.github.io/topicos_is/](https://sporella.github.io/edudown/))**
+👉 **[Ver demo en GitHub Pages](https://sporella.github.io/edudown)**
 
 Usuarios de acceso rápido disponibles en la pantalla de login.
 
