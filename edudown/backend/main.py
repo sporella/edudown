@@ -194,6 +194,41 @@ def get_paciente(paciente_id: int, session: Session = Depends(get_session)):
     return _paciente_dict(p, session)
 
 
+class CrearPacienteRequest(BaseModel):
+    nombre: str
+    fecha_nacimiento: str
+    etapa: str
+    sede_id: int
+    necesita_kine: bool = True
+    necesita_fono: bool = False
+    frecuencia_semanal_kine: int = 2
+    frecuencia_semanal_fono: int = 0
+    notas_clinicas: Optional[str] = None
+
+
+@app.post("/api/pacientes")
+def crear_paciente(req: CrearPacienteRequest, session: Session = Depends(get_session)):
+    if not req.nombre.strip():
+        raise HTTPException(status_code=422, detail="El nombre es obligatorio")
+    if not req.necesita_kine and not req.necesita_fono:
+        raise HTTPException(status_code=422, detail="Debe requerir al menos un tipo de tratamiento")
+    pac = Paciente(
+        nombre=req.nombre.strip(),
+        fecha_nacimiento=date.fromisoformat(req.fecha_nacimiento),
+        etapa=EtapaTratamiento(req.etapa),
+        sede_id=req.sede_id,
+        necesita_kine=req.necesita_kine,
+        necesita_fono=req.necesita_fono,
+        frecuencia_semanal_kine=req.frecuencia_semanal_kine if req.necesita_kine else 0,
+        frecuencia_semanal_fono=req.frecuencia_semanal_fono if req.necesita_fono else 0,
+        notas_clinicas=req.notas_clinicas or None,
+    )
+    session.add(pac)
+    session.commit()
+    session.refresh(pac)
+    return _paciente_dict(pac, session)
+
+
 @app.get("/api/pacientes/{paciente_id}/historial")
 def get_historial(paciente_id: int, session: Session = Depends(get_session)):
     sesiones = session.exec(
@@ -449,18 +484,28 @@ def get_sugerencia(
     profs = session.exec(select(Profesional).where(Profesional.sede_id == sede_id)).all()
     sesiones_hoy = session.exec(select(Sesion).where(Sesion.fecha == today)).all()
 
-    occupied_boxes = {s.box_id for s in sesiones_hoy
-                      if s.estado in [SessionStatus.planificada, SessionStatus.en_curso]}
+    # Compute busy hours per box so we can find free slots (enables rescheduling)
+    box_busy_hours = {}
+    for s in sesiones_hoy:
+        if s.estado in [SessionStatus.planificada, SessionStatus.en_curso]:
+            box_busy_hours.setdefault(s.box_id, set()).add(s.hora_inicio)
+
     busy_profs = {s.profesional_id for s in sesiones_hoy
                   if s.estado == SessionStatus.en_curso}
     patient_busy_hours = {s.hora_inicio for s in sesiones_hoy
                           if s.paciente_id == paciente_id
                           and s.estado in [SessionStatus.planificada, SessionStatus.en_curso]}
 
-    kine_boxes = [b for b in boxes if b.tipo == BoxType.kinesiologia
-                  and b.id not in occupied_boxes and b.estado == BoxStatus.disponible]
-    fono_boxes = [b for b in boxes if b.tipo == BoxType.fonoaudiologia
-                  and b.id not in occupied_boxes and b.estado == BoxStatus.disponible]
+    # Include ALL boxes (not just disponible): sort disponible first so we prefer free boxes,
+    # but fall back to occupied boxes with a later free slot for rescheduling suggestions
+    kine_boxes = sorted(
+        [b for b in boxes if b.tipo == BoxType.kinesiologia],
+        key=lambda b: (0 if b.estado == BoxStatus.disponible else 1)
+    )
+    fono_boxes = sorted(
+        [b for b in boxes if b.tipo == BoxType.fonoaudiologia],
+        key=lambda b: (0 if b.estado == BoxStatus.disponible else 1)
+    )
     kine_profs = [p for p in profs if p.especialidad == BoxType.kinesiologia and p.id not in busy_profs]
     fono_profs = [p for p in profs if p.especialidad == BoxType.fonoaudiologia and p.id not in busy_profs]
 
@@ -485,21 +530,39 @@ def get_sugerencia(
 
     sugerencias = []
 
+    def find_slot(box_list):
+        """Return (box, hora) — first slot where box is free AND patient is free."""
+        for box in box_list:
+            busy = box_busy_hours.get(box.id, set())
+            for hora in HORARIOS_SUGERENCIA:
+                if hora not in busy and hora not in patient_busy_hours:
+                    return box, hora
+        return None, None
+
     # --- Heuristic rules (RN-05, RN-06, RN-19) ---
 
     def make_kine_sug():
-        if not kine_boxes or not kine_profs:
+        if not kine_profs:
             return None
-        razones = ["box-tipo-match", "prof-disponible", f"boxes-kine-disp:{len(kine_boxes)}"]
+        box, hora = find_slot(kine_boxes)
+        if not box:
+            return None
+        is_reagenda = box.estado != BoxStatus.disponible
+        disp_count = sum(1 for b in kine_boxes if b.estado == BoxStatus.disponible)
+        razones = ["box-tipo-match", "prof-disponible"]
+        if is_reagenda:
+            razones.append(f"reagendamiento:box-{box.numero}-libre-a-{hora}")
+        else:
+            razones.append(f"boxes-kine-disp:{disp_count}")
         confianza = 75
+        if is_reagenda:
+            confianza -= 5
 
-        # Base: urgency
         if es_urgencia:
             razones.append("urgencia-prioridad-alta")
             confianza += 10
 
         if paciente:
-            # Rule: patient needs kine
             if paciente_context["necesita_kine"]:
                 razones.append("tratamiento-requerido:kinesiologia")
                 confianza += 8
@@ -507,7 +570,6 @@ def get_sugerencia(
                 razones.append("⚠️ paciente-no-requiere-kine")
                 confianza -= 20
 
-            # Rule: etapa affects priority
             etapa = paciente_context["etapa"]
             if etapa == EtapaTratamiento.bebes_sin_marcha:
                 razones.append(f"etapa:bebes-sin-marcha→prioridad-alta")
@@ -519,7 +581,6 @@ def get_sugerencia(
                 razones.append(f"etapa:transicion-vida-adulta")
                 confianza += 2
 
-            # Rule: continuity of care — preferred professional
             pref_id = paciente_context["pref_kine_id"]
             pref_prof = next((p for p in kine_profs if p.id == pref_id), None)
             if pref_prof:
@@ -531,7 +592,6 @@ def get_sugerencia(
                 if pref_id:
                     razones.append("prof-habitual-ocupado→alternativa")
 
-            # Rule: session history
             hist = paciente_context["historial_count"]
             if hist > 0:
                 razones.append(f"historial:{hist}-sesiones-completadas")
@@ -540,7 +600,6 @@ def get_sugerencia(
                 razones.append("primera-sesion→supervisión-recomendada")
                 confianza -= 5
 
-            # Rule: frequency
             frec = paciente_context["frec_kine"]
             if frec >= 3:
                 razones.append(f"frecuencia-alta:{frec}x/semana")
@@ -548,18 +607,24 @@ def get_sugerencia(
         else:
             chosen_prof = kine_profs[0]
 
-        hora = next((h for h in HORARIOS_SUGERENCIA if h not in patient_busy_hours), None)
-        if hora is None:
-            return None
-        if patient_busy_hours:
-            razones.append(f"paciente-libre-{hora}")
-        return _build_sugerencia(kine_boxes[0], chosen_prof, "kinesiologia", razones, confianza, hora)
+        return _build_sugerencia(box, chosen_prof, "kinesiologia", razones, confianza, hora)
 
     def make_fono_sug():
-        if not fono_boxes or not fono_profs:
+        if not fono_profs:
             return None
-        razones = ["box-tipo-match", "prof-disponible", f"boxes-fono-disp:{len(fono_boxes)}"]
+        box, hora = find_slot(fono_boxes)
+        if not box:
+            return None
+        is_reagenda = box.estado != BoxStatus.disponible
+        disp_count = sum(1 for b in fono_boxes if b.estado == BoxStatus.disponible)
+        razones = ["box-tipo-match", "prof-disponible"]
+        if is_reagenda:
+            razones.append(f"reagendamiento:box-{box.numero}-libre-a-{hora}")
+        else:
+            razones.append(f"boxes-fono-disp:{disp_count}")
         confianza = 75
+        if is_reagenda:
+            confianza -= 5
 
         if es_urgencia:
             razones.append("urgencia-prioridad-alta")
@@ -607,12 +672,7 @@ def get_sugerencia(
         else:
             chosen_prof = fono_profs[0]
 
-        hora = next((h for h in HORARIOS_SUGERENCIA if h not in patient_busy_hours), None)
-        if hora is None:
-            return None
-        if patient_busy_hours:
-            razones.append(f"paciente-libre-{hora}")
-        return _build_sugerencia(fono_boxes[0], chosen_prof, "fonoaudiologia", razones, confianza, hora)
+        return _build_sugerencia(box, chosen_prof, "fonoaudiologia", razones, confianza, hora)
 
     # Decide what to suggest based on patient needs
     if paciente:

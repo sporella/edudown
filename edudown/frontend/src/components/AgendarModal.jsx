@@ -66,7 +66,11 @@ export default function AgendarModal({ box, sedeId, onClose, onSuccess, isUrgenc
   }
 
   const applySugerencia = (sug) => {
-    setForm(f => ({ ...f, profesional_id: String(sug.profesional.id) }))
+    setForm(f => ({
+      ...f,
+      profesional_id: String(sug.profesional.id),
+      ...(sug.hora_sugerida ? { hora_inicio: sug.hora_sugerida } : {}),
+    }))
     setAppliedSugBox(sug.box)
     setUsingSugerencia(true)
   }
@@ -223,7 +227,7 @@ export default function AgendarModal({ box, sedeId, onClose, onSuccess, isUrgenc
               <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
-              Sugerencia aplicada — {appliedSugBox ? `Box ${appliedSugBox.numero}` : ''} · puedes modificar si lo necesitas
+              Sugerencia aplicada — {appliedSugBox ? `Box ${appliedSugBox.numero}` : ''}{form.hora_inicio ? ` · ${form.hora_inicio}` : ''} · puedes modificar si lo necesitas
             </div>
           )}
 

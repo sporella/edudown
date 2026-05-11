@@ -171,6 +171,178 @@ function HistorialModal({ paciente, onClose, onAgendar }) {
   )
 }
 
+const CAN_CREATE = ['enfermera', 'admin_sede', 'admin_institucion']
+
+function NuevoPacienteModal({ sedeId, onClose, onSuccess }) {
+  const [form, setForm] = useState({
+    nombre: '',
+    fecha_nacimiento: '',
+    etapa: 'preescolar_escolar',
+    necesita_kine: true,
+    frecuencia_semanal_kine: 2,
+    necesita_fono: false,
+    frecuencia_semanal_fono: 2,
+    notas_clinicas: '',
+  })
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const handleSubmit = async (e) => {
+    e.preventDefault()
+    if (!form.nombre.trim() || !form.fecha_nacimiento) {
+      setError('Nombre y fecha de nacimiento son obligatorios')
+      return
+    }
+    if (!form.necesita_kine && !form.necesita_fono) {
+      setError('Debe requerir al menos un tipo de tratamiento')
+      return
+    }
+    setError('')
+    setLoading(true)
+    try {
+      await axios.post('/api/pacientes', {
+        nombre: form.nombre.trim(),
+        fecha_nacimiento: form.fecha_nacimiento,
+        etapa: form.etapa,
+        sede_id: sedeId,
+        necesita_kine: form.necesita_kine,
+        necesita_fono: form.necesita_fono,
+        frecuencia_semanal_kine: form.necesita_kine ? +form.frecuencia_semanal_kine : 0,
+        frecuencia_semanal_fono: form.necesita_fono ? +form.frecuencia_semanal_fono : 0,
+        notas_clinicas: form.notas_clinicas || null,
+      })
+      onSuccess()
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Error al crear el paciente')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const FreqButtons = ({ value, onChange, color }) => (
+    <div className="flex items-center gap-2 mt-2">
+      {[1, 2, 3, 4, 5].map(n => (
+        <button type="button" key={n} onClick={() => onChange(n)}
+          className={`w-8 h-8 rounded-lg text-sm font-semibold transition-colors ${
+            value === n ? `${color} text-white` : 'bg-white border border-gray-200 text-gray-600 hover:bg-gray-50'
+          }`}>
+          {n}
+        </button>
+      ))}
+      <span className="text-xs text-gray-400 ml-1">× / semana</span>
+    </div>
+  )
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
+        <div className="px-6 py-5 bg-blue-600 flex items-start justify-between shrink-0">
+          <div>
+            <h2 className="font-bold text-white text-base">Nuevo Paciente</h2>
+            <p className="text-sm text-white/70 mt-0.5">Completar perfil terapéutico</p>
+          </div>
+          <button onClick={onClose} className="text-white/70 hover:text-white p-1 rounded transition-colors">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+
+        <div className="overflow-y-auto flex-1 px-6 py-5">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <label className="label">Nombre completo *</label>
+              <input className="input" type="text" required autoFocus
+                placeholder="Nombre y apellido"
+                value={form.nombre}
+                onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Fecha de nacimiento *</label>
+                <input className="input" type="date" required
+                  value={form.fecha_nacimiento}
+                  onChange={e => setForm(f => ({ ...f, fecha_nacimiento: e.target.value }))} />
+              </div>
+              <div>
+                <label className="label">Etapa de tratamiento *</label>
+                <select className="input" value={form.etapa}
+                  onChange={e => setForm(f => ({ ...f, etapa: e.target.value }))}>
+                  <option value="bebes_sin_marcha">Bebés sin marcha</option>
+                  <option value="preescolar_escolar">Preescolar / Escolar</option>
+                  <option value="transicion_vida_adulta">Transición vida adulta</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="bg-teal-50 border border-teal-100 rounded-xl p-4 space-y-1">
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input type="checkbox" checked={form.necesita_kine}
+                  onChange={e => setForm(f => ({ ...f, necesita_kine: e.target.checked }))}
+                  className="rounded border-gray-300 text-teal-600" />
+                <span className="text-sm font-semibold text-teal-800">Requiere Kinesiología</span>
+              </label>
+              {form.necesita_kine && (
+                <div>
+                  <p className="text-xs text-teal-600 mt-1">Frecuencia semanal</p>
+                  <FreqButtons
+                    value={form.frecuencia_semanal_kine}
+                    onChange={v => setForm(f => ({ ...f, frecuencia_semanal_kine: v }))}
+                    color="bg-teal-600"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div className="bg-emerald-50 border border-emerald-100 rounded-xl p-4 space-y-1">
+              <label className="flex items-center gap-2.5 cursor-pointer">
+                <input type="checkbox" checked={form.necesita_fono}
+                  onChange={e => setForm(f => ({ ...f, necesita_fono: e.target.checked }))}
+                  className="rounded border-gray-300 text-emerald-600" />
+                <span className="text-sm font-semibold text-emerald-800">Requiere Fonoaudiología</span>
+              </label>
+              {form.necesita_fono && (
+                <div>
+                  <p className="text-xs text-emerald-600 mt-1">Frecuencia semanal</p>
+                  <FreqButtons
+                    value={form.frecuencia_semanal_fono}
+                    onChange={v => setForm(f => ({ ...f, frecuencia_semanal_fono: v }))}
+                    color="bg-emerald-600"
+                  />
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label className="label">Notas clínicas (opcional)</label>
+              <textarea className="input" rows={3}
+                placeholder="Observaciones clínicas relevantes, condiciones especiales..."
+                value={form.notas_clinicas}
+                onChange={e => setForm(f => ({ ...f, notas_clinicas: e.target.value }))} />
+            </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-3.5 py-2.5 rounded-lg text-sm">
+                {error}
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-1">
+              <button type="button" onClick={onClose} className="btn-secondary flex-1 justify-center">
+                Cancelar
+              </button>
+              <button type="submit" disabled={loading} className="btn-primary flex-1 justify-center">
+                {loading ? 'Guardando...' : 'Crear Paciente'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Pacientes({ user }) {
   const [pacientes, setPacientes] = useState([])
   const [loading, setLoading] = useState(true)
@@ -179,6 +351,7 @@ export default function Pacientes({ user }) {
   const [busqueda, setBusqueda] = useState('')
   const [detalle, setDetalle] = useState(null)
   const [agendarPaciente, setAgendarPaciente] = useState(null)
+  const [mostrarNuevo, setMostrarNuevo] = useState(false)
   const [sedes, setSedes] = useState([])
   const [selectedSede, setSelectedSede] = useState(user.sede_id || 1)
 
@@ -207,9 +380,16 @@ export default function Pacientes({ user }) {
   return (
     <div className="space-y-5 max-w-5xl">
       {/* Header */}
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">Pacientes</h1>
-        <p className="text-sm text-gray-400 mt-0.5">Perfiles clínicos y necesidades terapéuticas</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">Pacientes</h1>
+          <p className="text-sm text-gray-400 mt-0.5">Perfiles clínicos y necesidades terapéuticas</p>
+        </div>
+        {CAN_CREATE.includes(user.rol) && (
+          <button onClick={() => setMostrarNuevo(true)} className="btn-primary shrink-0">
+            + Nuevo paciente
+          </button>
+        )}
       </div>
 
       {/* Sede selector (admin) */}
@@ -351,6 +531,13 @@ export default function Pacientes({ user }) {
           paciente={agendarPaciente}
           onClose={() => setAgendarPaciente(null)}
           onSuccess={() => { setAgendarPaciente(null); fetchPacientes() }}
+        />
+      )}
+      {mostrarNuevo && (
+        <NuevoPacienteModal
+          sedeId={selectedSede}
+          onClose={() => setMostrarNuevo(false)}
+          onSuccess={() => { setMostrarNuevo(false); fetchPacientes() }}
         />
       )}
     </div>

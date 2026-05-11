@@ -326,11 +326,17 @@ function handleMock(config) {
   if (m === 'get' && path.includes('/api/sugerencia')) {
     const sedeId = params.sede_id ? +params.sede_id : 1
     const pac = params.paciente_id ? PACIENTES.find(p => p.id === +params.paciente_id) : null
-    const available = state.boxes.filter(b => b.sede_id === sedeId && b.estado === 'disponible')
     const profs = PROFESIONALES.filter(p => p.sede_id === sedeId)
-    const sugerencias = []
 
-    // Compute patient's already-booked hours for today to avoid double-booking
+    // Compute busy hours per box to enable rescheduling across time slots
+    const boxBusyHours = {}
+    state.sessions
+      .filter(s => s.fecha === TODAY && (s.estado === 'planificada' || s.estado === 'en_curso'))
+      .forEach(s => {
+        if (!boxBusyHours[s.box_id]) boxBusyHours[s.box_id] = new Set()
+        boxBusyHours[s.box_id].add(s.hora_inicio)
+      })
+
     const pacienteBusyHours = pac ? new Set(
       state.sessions
         .filter(s => s.paciente_id === pac.id && s.fecha === TODAY &&
@@ -338,46 +344,60 @@ function handleMock(config) {
         .map(s => s.hora_inicio)
     ) : new Set()
 
-    // Pick first available hour not already taken by the patient
-    const pickHour = (defaultHour) => {
-      if (!pacienteBusyHours.has(defaultHour)) return defaultHour
-      return HORARIOS.find(h => !pacienteBusyHours.has(h)) || null
+    // Sort: disponible boxes first, then others (for rescheduling fallback)
+    const sortBoxes = (list) => [...list].sort((a, b) =>
+      (a.estado === 'disponible' ? 0 : 1) - (b.estado === 'disponible' ? 0 : 1)
+    )
+
+    // Find the first (box, hora) combo where both box and patient are free
+    const findSlot = (boxList) => {
+      for (const box of sortBoxes(boxList)) {
+        const busy = boxBusyHours[box.id] || new Set()
+        for (const hora of HORARIOS) {
+          if (!busy.has(hora) && !pacienteBusyHours.has(hora)) return { box, hora }
+        }
+      }
+      return null
     }
 
-    const kBox = available.find(b => b.tipo === 'kinesiologia')
+    const kineBoxes = state.boxes.filter(b => b.sede_id === sedeId && b.tipo === 'kinesiologia')
+    const fonoBoxes = state.boxes.filter(b => b.sede_id === sedeId && b.tipo === 'fonoaudiologia')
+    const sugerencias = []
+
+    const kSlot = findSlot(kineBoxes)
     const kProf = profs.find(p => p.especialidad === 'kinesiologia')
-    const kHora = pickHour('09:00')
-    if (kBox && kProf && kHora && (!pac || pac.necesita_kine)) {
+    if (kSlot && kProf && (!pac || pac.necesita_kine)) {
+      const isReagenda = kSlot.box.estado !== 'disponible'
       const razones = [
         pac?.necesita_kine ? 'Kinesiología requerida por el paciente' : 'Box kinesiología disponible',
         pac?.profesional_preferido_kine?.id === kProf.id ? 'Profesional habitual del paciente' : 'Profesional disponible',
-        'Horario óptimo de la jornada',
       ]
-      if (pacienteBusyHours.size > 0) razones.push(`paciente-libre-${kHora}`)
+      if (isReagenda) razones.push(`reagendamiento:box-${kSlot.box.numero}-libre-a-${kSlot.hora}`)
+      else razones.push('Horario óptimo de la jornada')
       sugerencias.push({
-        tipo: 'kinesiologia', box: kBox, profesional: kProf, hora_sugerida: kHora,
-        confianza: pac?.necesita_kine ? 90 : 72,
+        tipo: 'kinesiologia', box: kSlot.box, profesional: kProf, hora_sugerida: kSlot.hora,
+        confianza: (pac?.necesita_kine ? 90 : 72) - (isReagenda ? 5 : 0),
         razones,
       })
     }
 
-    const fBox = available.find(b => b.tipo === 'fonoaudiologia')
+    const fSlot = findSlot(fonoBoxes)
     const fProf = profs.find(p => p.especialidad === 'fonoaudiologia')
-    const fHora = pickHour('10:00')
-    if (fBox && fProf && fHora && (!pac || pac.necesita_fono)) {
+    if (fSlot && fProf && (!pac || pac.necesita_fono)) {
+      const isReagenda = fSlot.box.estado !== 'disponible'
       const razones = [
         pac?.necesita_fono ? 'Fonoaudiología requerida por el paciente' : 'Box fonoaudiología disponible',
         'Profesional disponible en la sede',
       ]
-      if (pacienteBusyHours.size > 0) razones.push(`paciente-libre-${fHora}`)
+      if (isReagenda) razones.push(`reagendamiento:box-${fSlot.box.numero}-libre-a-${fSlot.hora}`)
       sugerencias.push({
-        tipo: 'fonoaudiologia', box: fBox, profesional: fProf, hora_sugerida: fHora,
-        confianza: pac?.necesita_fono ? 88 : 65,
+        tipo: 'fonoaudiologia', box: fSlot.box, profesional: fProf, hora_sugerida: fSlot.hora,
+        confianza: (pac?.necesita_fono ? 88 : 65) - (isReagenda ? 5 : 0),
         razones,
       })
     }
 
-    if (!sugerencias.length) return ok({ mensaje: 'Sin boxes disponibles en este momento', sugerencias: [], confianza_baja: true })
+    if (!sugerencias.length) return ok({ mensaje: 'Sin disponibilidad en ningún horario hoy', sugerencias: [], confianza_baja: true })
     return ok({
       paciente_nombre: pac?.nombre || null,
       mensaje: pac
@@ -429,6 +449,29 @@ function handleMock(config) {
     const n = state.notifications.find(n => n.id === +mNotif[1])
     if (n) n.leida = true
     return ok({ ok: true })
+  }
+
+  // POST /api/pacientes
+  if (m === 'post' && /\/api\/pacientes$/.test(path)) {
+    const { nombre, fecha_nacimiento, etapa, sede_id, necesita_kine, necesita_fono,
+            frecuencia_semanal_kine, frecuencia_semanal_fono, notas_clinicas } = body
+    if (!nombre?.trim()) return err('El nombre es obligatorio', 422)
+    if (!necesita_kine && !necesita_fono) return err('Debe requerir al menos un tipo de tratamiento', 422)
+    const pac = {
+      id: state.nextId++,
+      nombre: nombre.trim(), fecha_nacimiento, etapa,
+      sede_id: +sede_id,
+      necesita_kine: !!necesita_kine,
+      necesita_fono: !!necesita_fono,
+      frecuencia_semanal_kine: necesita_kine ? (+frecuencia_semanal_kine || 2) : 0,
+      frecuencia_semanal_fono: necesita_fono ? (+frecuencia_semanal_fono || 2) : 0,
+      notas_clinicas: notas_clinicas || null,
+      profesional_preferido_kine: null,
+      profesional_preferido_fono: null,
+      sesiones_total: 0, sesiones_completadas: 0, sesiones_hoy: [],
+    }
+    PACIENTES.push(pac)
+    return ok(pac)
   }
 
   // GET /api/pacientes/:id/historial
