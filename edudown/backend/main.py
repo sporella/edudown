@@ -261,6 +261,18 @@ async def agendar_sesion(req: AgendarSesionRequest, session: Session = Depends(g
     if conflicto_prof:
         raise HTTPException(status_code=409, detail="El profesional ya tiene una sesión en ese horario")
 
+    # Check patient availability (RN-10): a patient cannot have two sessions at the same time
+    conflicto_paciente = session.exec(
+        select(Sesion).where(
+            Sesion.paciente_id == req.paciente_id,
+            Sesion.fecha == fecha,
+            Sesion.estado.in_([SessionStatus.planificada, SessionStatus.en_curso]),
+            Sesion.hora_inicio == req.hora_inicio,
+        )
+    ).first()
+    if conflicto_paciente:
+        raise HTTPException(status_code=409, detail="El paciente ya tiene una sesión en ese horario")
+
     # Type compatibility (RN-05)
     prof = session.get(Profesional, req.profesional_id)
     if prof and prof.especialidad != box.tipo:
@@ -411,13 +423,17 @@ async def cerrar_sesion(
 
 # ---- AI Suggestion (Heuristic Engine — patient-aware) ----
 
-def _build_sugerencia(box, prof, tipo: str, razones: list, confianza: int) -> dict:
+HORARIOS_SUGERENCIA = ["09:00", "10:00", "11:00", "14:00", "15:00", "16:00"]
+
+
+def _build_sugerencia(box, prof, tipo: str, razones: list, confianza: int, hora_sugerida: str = "09:00") -> dict:
     return {
         "box": {"id": box.id, "numero": box.numero, "tipo": box.tipo},
         "profesional": {"id": prof.id, "nombre": prof.nombre, "especialidad": prof.especialidad},
         "confianza": min(confianza, 98),
         "razones": razones,
         "tipo": tipo,
+        "hora_sugerida": hora_sugerida,
     }
 
 
@@ -437,6 +453,9 @@ def get_sugerencia(
                       if s.estado in [SessionStatus.planificada, SessionStatus.en_curso]}
     busy_profs = {s.profesional_id for s in sesiones_hoy
                   if s.estado == SessionStatus.en_curso}
+    patient_busy_hours = {s.hora_inicio for s in sesiones_hoy
+                          if s.paciente_id == paciente_id
+                          and s.estado in [SessionStatus.planificada, SessionStatus.en_curso]}
 
     kine_boxes = [b for b in boxes if b.tipo == BoxType.kinesiologia
                   and b.id not in occupied_boxes and b.estado == BoxStatus.disponible]
@@ -529,7 +548,12 @@ def get_sugerencia(
         else:
             chosen_prof = kine_profs[0]
 
-        return _build_sugerencia(kine_boxes[0], chosen_prof, "kinesiologia", razones, confianza)
+        hora = next((h for h in HORARIOS_SUGERENCIA if h not in patient_busy_hours), None)
+        if hora is None:
+            return None
+        if patient_busy_hours:
+            razones.append(f"paciente-libre-{hora}")
+        return _build_sugerencia(kine_boxes[0], chosen_prof, "kinesiologia", razones, confianza, hora)
 
     def make_fono_sug():
         if not fono_boxes or not fono_profs:
@@ -583,7 +607,12 @@ def get_sugerencia(
         else:
             chosen_prof = fono_profs[0]
 
-        return _build_sugerencia(fono_boxes[0], chosen_prof, "fonoaudiologia", razones, confianza)
+        hora = next((h for h in HORARIOS_SUGERENCIA if h not in patient_busy_hours), None)
+        if hora is None:
+            return None
+        if patient_busy_hours:
+            razones.append(f"paciente-libre-{hora}")
+        return _build_sugerencia(fono_boxes[0], chosen_prof, "fonoaudiologia", razones, confianza, hora)
 
     # Decide what to suggest based on patient needs
     if paciente:

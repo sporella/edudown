@@ -261,6 +261,27 @@ function handleMock(config) {
     const prof = PROFESIONALES.find(p => p.id === body.profesional_id)
     const pac = PACIENTES.find(p => p.id === body.paciente_id)
     if (!box || !prof || !pac) return err('Datos inválidos')
+
+    const conflictoBox = state.sessions.find(s =>
+      s.box_id === body.box_id && s.fecha === body.fecha &&
+      s.hora_inicio === body.hora_inicio &&
+      (s.estado === 'planificada' || s.estado === 'en_curso')
+    )
+    if (conflictoBox) return err('El box ya tiene una sesión en ese horario', 409)
+
+    const conflictoProf = state.sessions.find(s =>
+      s.profesional_id === body.profesional_id && s.fecha === body.fecha &&
+      s.hora_inicio === body.hora_inicio &&
+      (s.estado === 'planificada' || s.estado === 'en_curso')
+    )
+    if (conflictoProf) return err('El profesional ya tiene una sesión en ese horario', 409)
+
+    const conflictoPaciente = state.sessions.find(s =>
+      s.paciente_id === body.paciente_id && s.fecha === body.fecha &&
+      s.hora_inicio === body.hora_inicio &&
+      (s.estado === 'planificada' || s.estado === 'en_curso')
+    )
+    if (conflictoPaciente) return err('El paciente ya tiene una sesión en ese horario', 409)
     const sede = SEDES.find(s => s.id === box.sede_id)
     const s = {
       id: state.nextId++,
@@ -309,30 +330,50 @@ function handleMock(config) {
     const profs = PROFESIONALES.filter(p => p.sede_id === sedeId)
     const sugerencias = []
 
+    // Compute patient's already-booked hours for today to avoid double-booking
+    const pacienteBusyHours = pac ? new Set(
+      state.sessions
+        .filter(s => s.paciente_id === pac.id && s.fecha === TODAY &&
+          (s.estado === 'planificada' || s.estado === 'en_curso'))
+        .map(s => s.hora_inicio)
+    ) : new Set()
+
+    // Pick first available hour not already taken by the patient
+    const pickHour = (defaultHour) => {
+      if (!pacienteBusyHours.has(defaultHour)) return defaultHour
+      return HORARIOS.find(h => !pacienteBusyHours.has(h)) || null
+    }
+
     const kBox = available.find(b => b.tipo === 'kinesiologia')
     const kProf = profs.find(p => p.especialidad === 'kinesiologia')
-    if (kBox && kProf && (!pac || pac.necesita_kine)) {
+    const kHora = pickHour('09:00')
+    if (kBox && kProf && kHora && (!pac || pac.necesita_kine)) {
+      const razones = [
+        pac?.necesita_kine ? 'Kinesiología requerida por el paciente' : 'Box kinesiología disponible',
+        pac?.profesional_preferido_kine?.id === kProf.id ? 'Profesional habitual del paciente' : 'Profesional disponible',
+        'Horario óptimo de la jornada',
+      ]
+      if (pacienteBusyHours.size > 0) razones.push(`paciente-libre-${kHora}`)
       sugerencias.push({
-        tipo: 'kinesiologia', box: kBox, profesional: kProf, hora_sugerida: '09:00',
+        tipo: 'kinesiologia', box: kBox, profesional: kProf, hora_sugerida: kHora,
         confianza: pac?.necesita_kine ? 90 : 72,
-        razones: [
-          pac?.necesita_kine ? 'Kinesiología requerida por el paciente' : 'Box kinesiología disponible',
-          pac?.profesional_preferido_kine?.id === kProf.id ? 'Profesional habitual del paciente' : 'Profesional disponible',
-          'Horario óptimo de la jornada',
-        ],
+        razones,
       })
     }
 
     const fBox = available.find(b => b.tipo === 'fonoaudiologia')
     const fProf = profs.find(p => p.especialidad === 'fonoaudiologia')
-    if (fBox && fProf && (!pac || pac.necesita_fono)) {
+    const fHora = pickHour('10:00')
+    if (fBox && fProf && fHora && (!pac || pac.necesita_fono)) {
+      const razones = [
+        pac?.necesita_fono ? 'Fonoaudiología requerida por el paciente' : 'Box fonoaudiología disponible',
+        'Profesional disponible en la sede',
+      ]
+      if (pacienteBusyHours.size > 0) razones.push(`paciente-libre-${fHora}`)
       sugerencias.push({
-        tipo: 'fonoaudiologia', box: fBox, profesional: fProf, hora_sugerida: '10:00',
+        tipo: 'fonoaudiologia', box: fBox, profesional: fProf, hora_sugerida: fHora,
         confianza: pac?.necesita_fono ? 88 : 65,
-        razones: [
-          pac?.necesita_fono ? 'Fonoaudiología requerida por el paciente' : 'Box fonoaudiología disponible',
-          'Profesional disponible en la sede',
-        ],
+        razones,
       })
     }
 
