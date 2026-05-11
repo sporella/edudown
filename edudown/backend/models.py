@@ -110,6 +110,7 @@ class Sesion(SQLModel, table=True):
     hora_fin: str
     estado: SessionStatus = SessionStatus.planificada
     es_urgencia: bool = False
+    reagendada_por_urgencia: bool = False
     notas: Optional[str] = None
     creado_en: datetime = Field(default_factory=datetime.utcnow)
     box: Optional[Box] = Relationship(back_populates="sesiones")

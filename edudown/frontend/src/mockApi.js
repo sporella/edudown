@@ -304,9 +304,11 @@ function handleMock(config) {
           conflictoBox.box_id = nuevoBox.id
           conflictoBox.hora_inicio = nuevaHora
           conflictoBox.hora_fin = HORARIOS_FIN[nuevaHora] || nuevaHora
+          conflictoBox.reagendada_por_urgencia = true
           desplazamientoInfo = { paciente: pacD?.nombre || '', hora_original: horaOriginal, nueva_hora: nuevaHora, nuevo_box: nuevoBox.numero, suspendida: false }
         } else {
           conflictoBox.estado = 'suspendida'
+          conflictoBox.reagendada_por_urgencia = true
           desplazamientoInfo = { paciente: pacD?.nombre || '', hora_original: horaOriginal, nueva_hora: null, nuevo_box: null, suspendida: true }
         }
       }

@@ -390,6 +390,7 @@ def get_sesiones_hoy(sede_id: Optional[int] = None, fecha: Optional[str] = None,
             "hora_fin": s.hora_fin,
             "estado": s.estado,
             "es_urgencia": s.es_urgencia,
+            "reagendada_por_urgencia": s.reagendada_por_urgencia,
         })
     return result
 
@@ -521,6 +522,7 @@ def _desplazar_sesion(sesion_desplazada, fecha, tipo_box, sede_id, db_session):
         sesion_desplazada.box_id = nueva_box.id
         sesion_desplazada.hora_inicio = nueva_hora
         sesion_desplazada.hora_fin = HORARIOS_FIN.get(nueva_hora, nueva_hora)
+        sesion_desplazada.reagendada_por_urgencia = True
         return {
             "sesion_id": sesion_desplazada.id,
             "paciente": pac.nombre if pac else "",
