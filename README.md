@@ -1,7 +1,7 @@
 # EduDown — Sistema de Agendamiento de Box de Atención
 
 > **Proyecto académico** — Proyecto Integrador, Caso 15.
-> Magíster en Ingeniería de Software, 2026.
+> Tópicos de Especialidad en Ingeniería de Software, Magister en Ingeniería en Informática UNAB, mayo 2026.
 
 > **Todos los datos, pacientes, profesionales y sedes son ficticios y fueron generados exclusivamente con fines demostrativos. No representan información real de ninguna organización ni persona.**
 
@@ -117,15 +117,4 @@ topicos_is/
 └── README.md
 ```
 
-## Despliegue en GitHub Pages
-
-El workflow `.github/workflows/deploy.yml` construye el frontend con `VITE_DEMO_MODE=true` y despliega automáticamente en la rama `gh-pages` al hacer push a `main`.
-
-Para activarlo:
-1. Subir el repo a GitHub
-2. Ir a **Settings → Pages → Source → gh-pages branch**
-3. Hacer push a `main` — el deploy se ejecuta automáticamente
-
----
-
-*Proyecto académico desarrollado para el Proyecto Integrador del Magíster en Ingeniería de Software. Todos los nombres, datos clínicos y organizacionales son inventados.*
+*Proyecto académico desarrollado para el curso Tópicos de Especialidad en Ingeniería de Software, Magister en Ingeniería Informática UNAB, mayo 2026. Todos los nombres, datos clínicos y organizacionales son inventados.*
