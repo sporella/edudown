@@ -61,7 +61,7 @@ export default function CerrarSesionModal({ sesion, onClose, onSuccess }) {
         <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between shrink-0">
           <div>
             <h2 className="font-bold text-gray-900">Cerrar sesión</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Box {sesion.box_numero || '?'}</p>
+            <p className="text-xs text-gray-400 mt-0.5">Sala terapéutica {sesion.box_numero || '?'}</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 rounded transition-colors">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -74,7 +74,7 @@ export default function CerrarSesionModal({ sesion, onClose, onSuccess }) {
           {/* Session info */}
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 space-y-1.5">
             <div className="flex justify-between text-sm">
-              <span className="text-gray-500">Paciente</span>
+              <span className="text-gray-500">Persona atendida</span>
               <span className="font-medium text-gray-800">{sesion.paciente}</span>
             </div>
             <div className="flex justify-between text-sm">

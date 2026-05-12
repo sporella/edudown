@@ -235,7 +235,7 @@ function NuevoPacienteModal({ sedeId, onClose, onSuccess }) {
       })
       onSuccess()
     } catch (err) {
-      setError(err.response?.data?.detail || 'Error al crear el paciente')
+      setError(err.response?.data?.detail || 'Error al crear la persona atendida')
     } finally {
       setLoading(false)
     }
@@ -260,7 +260,7 @@ function NuevoPacienteModal({ sedeId, onClose, onSuccess }) {
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
         <div className="px-6 py-5 bg-blue-600 flex items-start justify-between shrink-0">
           <div>
-            <h2 className="font-bold text-white text-base">Nuevo Paciente</h2>
+            <h2 className="font-bold text-white text-base">Nueva persona atendida</h2>
             <p className="text-sm text-white/70 mt-0.5">Completar perfil terapéutico</p>
           </div>
           <button onClick={onClose} className="text-white/70 hover:text-white p-1 rounded transition-colors">
@@ -373,7 +373,7 @@ function NuevoPacienteModal({ sedeId, onClose, onSuccess }) {
                 Cancelar
               </button>
               <button type="submit" disabled={loading} className="btn-primary flex-1 justify-center">
-                {loading ? 'Guardando...' : 'Crear Paciente'}
+                {loading ? 'Guardando...' : 'Crear persona atendida'}
               </button>
             </div>
           </form>
@@ -422,12 +422,12 @@ export default function Pacientes({ user }) {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Pacientes</h1>
+          <h1 className="text-xl font-bold text-gray-900">Personas atendidas</h1>
           <p className="text-sm text-gray-400 mt-0.5">Perfiles clínicos y necesidades terapéuticas</p>
         </div>
         {CAN_CREATE.includes(user.rol) && (
           <button onClick={() => setMostrarNuevo(true)} className="btn-primary shrink-0">
-            + Nuevo paciente
+            + Nueva persona atendida
           </button>
         )}
       </div>

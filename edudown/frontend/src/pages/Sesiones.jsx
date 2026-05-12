@@ -149,7 +149,7 @@ export default function Sesiones({ user }) {
                 <span>
                   <strong>{s.paciente}</strong> — nuevo horario{' '}
                   <strong>{s.hora_inicio}</strong>
-                  {s.hora_fin ? `–${s.hora_fin}` : ''}, Box {s.box_numero}{' '}
+                  {s.hora_fin ? `–${s.hora_fin}` : ''}, Sala terapéutica {s.box_numero}{' '}
                   <span className="text-amber-600">({s.profesional})</span>
                   {s.estado === 'suspendida' && (
                     <span className="ml-1.5 text-red-600 font-medium">· Suspendida — sin disponibilidad alternativa</span>
@@ -158,7 +158,7 @@ export default function Sesiones({ user }) {
               </li>
             ))}
           </ul>
-          <p className="text-[11px] text-amber-600 pl-6">Contactar a los pacientes para confirmar el cambio de horario.</p>
+          <p className="text-[11px] text-amber-600 pl-6">Contactar a las personas atendidas para confirmar el cambio de horario.</p>
         </div>
       )}
 
@@ -258,7 +258,7 @@ export default function Sesiones({ user }) {
                     </div>
                     <p className="text-xs text-gray-400 truncate mt-0.5">{s.profesional}</p>
                     <div className="flex items-center gap-1.5 mt-1 text-[11px] text-gray-400">
-                      <span>Box {s.box_numero}</span>
+                      <span>Sala terapéutica {s.box_numero}</span>
                       <span>·</span>
                       <span>{s.box_tipo === 'kinesiologia' ? 'Kinesiología' : 'Fonoaudiología'}</span>
                       <span>·</span>

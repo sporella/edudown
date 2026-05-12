@@ -91,7 +91,7 @@ export default function Dashboard({ user }) {
 
       {/* Global stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <StatCard label="Total Boxes" value={totales.total_boxes} />
+        <StatCard label="Total Salas terapéuticas" value={totales.total_boxes} />
         <StatCard label="Disponibles" value={totales.disponibles} valueColor="text-emerald-600" />
         <StatCard label="Ocupados" value={totales.ocupados} valueColor="text-red-600" />
         <StatCard label="Sesiones hoy" value={totales.sesiones_hoy} valueColor="text-blue-600" />

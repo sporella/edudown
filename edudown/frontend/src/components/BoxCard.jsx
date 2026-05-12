@@ -47,7 +47,7 @@ export default function BoxCard({ box, onClick, onClose, canSchedule, canClose, 
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-2">
-        <span className="font-semibold text-gray-800 text-sm">Box {box.numero}</span>
+        <span className="font-semibold text-gray-800 text-sm">Sala terapéutica {box.numero}</span>
         <span className={`flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${config.badge}`}>
           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${config.dot} ${config.pulse ? 'pulse-badge' : ''}`} />
           {config.label}

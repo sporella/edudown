@@ -94,7 +94,7 @@ export default function AgendarModal({ box, sedeId, onClose, onSuccess, isUrgenc
     setLoading(true)
     try {
       const boxId = box?.id || appliedSugBox?.id || sugerencia?.sugerencias?.[0]?.box?.id
-      if (!boxId) { setError('No hay box disponible. Selecciona desde el mapa o espera disponibilidad.'); setLoading(false); return }
+      if (!boxId) { setError('No hay sala terapéutica disponible. Selecciona desde el mapa o espera disponibilidad.'); setLoading(false); return }
       const res = await axios.post('/api/sesiones', {
         box_id: boxId,
         profesional_id: parseInt(form.profesional_id),
@@ -123,7 +123,7 @@ export default function AgendarModal({ box, sedeId, onClose, onSuccess, isUrgenc
           <div>
             <h2 className="font-bold text-white text-base">
               {isUrgencia ? 'Sesión Urgente' : 'Agendar Sesión'}
-              {box && ` — Box ${box.numero}`}
+              {box && ` — Sala terapéutica ${box.numero}`}
             </h2>
             {activePaciente && (
               <p className="text-sm text-white/80 mt-0.5">
@@ -189,7 +189,7 @@ export default function AgendarModal({ box, sedeId, onClose, onSuccess, isUrgenc
                 <div key={i} className="bg-white rounded-xl p-3 mb-2 border border-blue-100">
                   <div className="flex items-center justify-between mb-2">
                     <div>
-                      <span className="font-semibold text-sm text-gray-800">Box {s.box.numero}</span>
+                      <span className="font-semibold text-sm text-gray-800">Sala terapéutica {s.box.numero}</span>
                       <span className="text-gray-400 text-xs ml-2">→ {s.profesional.nombre}</span>
                       <span className="text-gray-400 text-xs ml-1">· {s.tipo === 'kinesiologia' ? 'Kine' : 'Fono'}</span>
                     </div>
@@ -215,7 +215,7 @@ export default function AgendarModal({ box, sedeId, onClose, onSuccess, isUrgenc
                     <div className="bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-2 mb-2.5 text-xs text-amber-800">
                       <strong>Desplazamiento:</strong> Sesión de <strong>{s.desplazamiento.paciente}</strong> a las {s.desplazamiento.hora_original}{' '}
                       {s.desplazamiento.nueva_hora
-                        ? <>será reagendada a las <strong>{s.desplazamiento.nueva_hora}</strong> (Box {s.desplazamiento.nuevo_box})</>
+                        ? <>será reagendada a las <strong>{s.desplazamiento.nueva_hora}</strong> (Sala terapéutica {s.desplazamiento.nuevo_box})</>
                         : <span className="text-red-700 font-medium">será suspendida — sin disponibilidad alternativa</span>
                       }
                     </div>
@@ -246,7 +246,7 @@ export default function AgendarModal({ box, sedeId, onClose, onSuccess, isUrgenc
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
               </svg>
               <span>
-                Sugerencia aplicada — {appliedSugBox ? `Box ${appliedSugBox.numero}` : ''}{form.hora_inicio ? ` · ${form.hora_inicio}` : ''}
+                Sugerencia aplicada — {appliedSugBox ? `Sala terapéutica ${appliedSugBox.numero}` : ''}{form.hora_inicio ? ` · ${form.hora_inicio}` : ''}
                 {appliedDesplazamiento && (
                   <span className="block text-xs mt-0.5">
                     Sesión de <strong>{appliedDesplazamiento.paciente}</strong> a las {appliedDesplazamiento.hora_original}{' '}
@@ -279,10 +279,10 @@ export default function AgendarModal({ box, sedeId, onClose, onSuccess, isUrgenc
 
             {!pacienteProp && (
               <div>
-                <label className="label">Paciente *</label>
+                <label className="label">Persona atendida *</label>
                 <select className="input" value={form.paciente_id}
                   onChange={e => handlePacienteChange(e.target.value)} required>
-                  <option value="">Seleccionar paciente...</option>
+                  <option value="">Seleccionar persona atendida...</option>
                   {pacientes.map(p => (
                     <option key={p.id} value={p.id}>{p.nombre} — {ETAPA_LABELS[p.etapa] || p.etapa}</option>
                   ))}
@@ -306,7 +306,7 @@ export default function AgendarModal({ box, sedeId, onClose, onSuccess, isUrgenc
 
             {boxIdToUse && (
               <div className="bg-gray-50 border border-gray-200 rounded-lg px-3.5 py-2.5 text-xs text-gray-500">
-                Box asignado: <strong className="text-gray-800">
+                Sala terapéutica asignada: <strong className="text-gray-800">
                   {box?.numero || appliedSugBox?.numero || sugerencia?.sugerencias?.[0]?.box?.numero}
                 </strong>
                 {' · '}

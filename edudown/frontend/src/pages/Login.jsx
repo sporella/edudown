@@ -3,7 +3,7 @@ import axios from 'axios'
 
 const DEMO_USERS = [
   { email: 'admin@edudown.cl', password: 'admin123', label: 'Admin Institución' },
-  { email: 'enfermera@edudown.cl', password: 'enf123', label: 'Enfermera de Box' },
+  { email: 'enfermera@edudown.cl', password: 'enf123', label: 'Enfermera de Sala terapéutica' },
   { email: 'kine@edudown.cl', password: 'kine123', label: 'Médico Kinesiólogo' },
   { email: 'fono@edudown.cl', password: 'fono123', label: 'Médico Fonoaudiólogo' },
   { email: 'auxiliar@edudown.cl', password: 'aux123', label: 'Auxiliar de Limpieza' },
@@ -52,13 +52,13 @@ export default function Login({ onLogin }) {
           </div>
           <h1 className="text-white text-3xl font-bold mb-3 leading-tight">EduDown</h1>
           <p className="text-blue-200 text-sm leading-relaxed">
-            Sistema de Agendamiento de Box de Atención para personas con síndrome de Down.
+            Sistema de Agendamiento de Salas Terapéuticas para personas con síndrome de Down.
           </p>
         </div>
         <div className="space-y-3">
           {[
             '4 sedes — Providencia, San Bernardo, Temuco, La Serena',
-            '48 boxes totales — 12 por sede',
+            '48 salas terapéuticas totales — 12 por sede',
             'Mapa en tiempo real con WebSocket',
             'Sugerencias con IA (human-in-the-loop)',
           ].map(text => (
