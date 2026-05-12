@@ -95,6 +95,8 @@ class Paciente(SQLModel, table=True):
     profesional_preferido_fono_id: Optional[int] = Field(default=None, foreign_key="profesional.id")
     # Perfil clínico
     notas_clinicas: Optional[str] = None
+    necesidades_especiales: Optional[str] = None
+    alergias: Optional[str] = None
     activo: bool = True
     sede: Optional[Sede] = Relationship(back_populates="pacientes")
     sesiones: List["Sesion"] = Relationship(back_populates="paciente")

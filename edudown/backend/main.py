@@ -169,6 +169,8 @@ def _paciente_dict(p: Paciente, session: Session) -> dict:
         "frecuencia_semanal_kine": p.frecuencia_semanal_kine,
         "frecuencia_semanal_fono": p.frecuencia_semanal_fono,
         "notas_clinicas": p.notas_clinicas,
+        "necesidades_especiales": p.necesidades_especiales,
+        "alergias": p.alergias,
         "activo": p.activo,
         "profesional_preferido_kine": {"id": pref_kine.id, "nombre": pref_kine.nombre} if pref_kine else None,
         "profesional_preferido_fono": {"id": pref_fono.id, "nombre": pref_fono.nombre} if pref_fono else None,
@@ -204,6 +206,8 @@ class CrearPacienteRequest(BaseModel):
     frecuencia_semanal_kine: int = 2
     frecuencia_semanal_fono: int = 0
     notas_clinicas: Optional[str] = None
+    necesidades_especiales: Optional[str] = None
+    alergias: Optional[str] = None
 
 
 @app.post("/api/pacientes")
@@ -222,6 +226,8 @@ def crear_paciente(req: CrearPacienteRequest, session: Session = Depends(get_ses
         frecuencia_semanal_kine=req.frecuencia_semanal_kine if req.necesita_kine else 0,
         frecuencia_semanal_fono=req.frecuencia_semanal_fono if req.necesita_fono else 0,
         notas_clinicas=req.notas_clinicas or None,
+        necesidades_especiales=req.necesidades_especiales or None,
+        alergias=req.alergias or None,
     )
     session.add(pac)
     session.commit()

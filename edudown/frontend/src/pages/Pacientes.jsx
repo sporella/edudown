@@ -96,6 +96,24 @@ function HistorialModal({ paciente, onClose, onAgendar }) {
             </div>
           )}
 
+          {/* Necesidades especiales y alergias */}
+          {(paciente.necesidades_especiales || paciente.alergias) && (
+            <div className="grid grid-cols-1 gap-3">
+              {paciente.necesidades_especiales && (
+                <div className="bg-orange-50 border border-orange-100 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-orange-700 mb-1 uppercase tracking-wide">Necesidades especiales</p>
+                  <p className="text-sm text-orange-800">{paciente.necesidades_especiales}</p>
+                </div>
+              )}
+              {paciente.alergias && (
+                <div className="bg-red-50 border border-red-100 rounded-xl p-4">
+                  <p className="text-xs font-semibold text-red-700 mb-1 uppercase tracking-wide">Alergias</p>
+                  <p className="text-sm text-red-800">{paciente.alergias}</p>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Treatment needs */}
           <div className="grid grid-cols-2 gap-3">
             {paciente.necesita_kine && (
@@ -183,6 +201,8 @@ function NuevoPacienteModal({ sedeId, onClose, onSuccess }) {
     necesita_fono: false,
     frecuencia_semanal_fono: 2,
     notas_clinicas: '',
+    necesidades_especiales: '',
+    alergias: '',
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
@@ -210,6 +230,8 @@ function NuevoPacienteModal({ sedeId, onClose, onSuccess }) {
         frecuencia_semanal_kine: form.necesita_kine ? +form.frecuencia_semanal_kine : 0,
         frecuencia_semanal_fono: form.necesita_fono ? +form.frecuencia_semanal_fono : 0,
         notas_clinicas: form.notas_clinicas || null,
+        necesidades_especiales: form.necesidades_especiales || null,
+        alergias: form.alergias || null,
       })
       onSuccess()
     } catch (err) {
@@ -320,6 +342,24 @@ function NuevoPacienteModal({ sedeId, onClose, onSuccess }) {
                 placeholder="Observaciones clínicas relevantes, condiciones especiales..."
                 value={form.notas_clinicas}
                 onChange={e => setForm(f => ({ ...f, notas_clinicas: e.target.value }))} />
+            </div>
+
+            <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 space-y-3">
+              <p className="text-xs font-semibold text-orange-700 uppercase tracking-wide">Información adicional</p>
+              <div>
+                <label className="label">Necesidades especiales (opcional)</label>
+                <textarea className="input" rows={2}
+                  placeholder="Ej: usa silla de ruedas, requiere acompañante, hipoacusia..."
+                  value={form.necesidades_especiales}
+                  onChange={e => setForm(f => ({ ...f, necesidades_especiales: e.target.value }))} />
+              </div>
+              <div>
+                <label className="label">Alergias (opcional)</label>
+                <textarea className="input" rows={2}
+                  placeholder="Ej: alergia a látex, penicilina, mariscos..."
+                  value={form.alergias}
+                  onChange={e => setForm(f => ({ ...f, alergias: e.target.value }))} />
+              </div>
             </div>
 
             {error && (
@@ -503,6 +543,21 @@ export default function Pacientes({ user }) {
 
                 {p.notas_clinicas && (
                   <p className="text-[11px] text-gray-400 line-clamp-2 mb-3 italic">{p.notas_clinicas}</p>
+                )}
+
+                {(p.necesidades_especiales || p.alergias) && (
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {p.necesidades_especiales && (
+                      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-100 font-medium">
+                        Nec. especiales
+                      </span>
+                    )}
+                    {p.alergias && (
+                      <span className="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-100 font-medium">
+                        Alergias
+                      </span>
+                    )}
+                  </div>
                 )}
 
                 <div className="flex items-center justify-between text-[11px] text-gray-400 border-t border-gray-100 pt-2.5">
